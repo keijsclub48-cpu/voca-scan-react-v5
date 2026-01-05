@@ -15,56 +15,54 @@ export function usePitchEngine() {
   const [error, setError] = useState<string | null>(null);
 
   const start = useCallback(async () => {
-    if (isRunning || isPreparing) return;
+    if (isRunning || isPreparing || isAnalyzing) return;
     
     setError(null);
     setDiagnosis(null);
-    setIsPreparing(true);
+    setIsPreparing(true); // 起動中表示スタート
 
     try {
-      // 1. AudioContextの初期化（既存があれば閉じ、新しく作ることで安定化）
       if (audioContextRef.current) {
         await audioContextRef.current.close();
       }
       const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext);
       audioContextRef.current = new AudioContextClass();
       
-      // 2. エンジンのインスタンス化
       if (!engineRef.current) {
         engineRef.current = new CrepeEngine();
       }
 
-      // 3. マイク起動と解析開始
+      // エンジンの開始（モデルロード完了まで await される）
       await engineRef.current.start(audioContextRef.current, (data: PitchData) => {
         const now = performance.now();
-        if (now - lastUpdateTimeRef.current > 33) { // 約30fpsに制限してUI負荷を軽減
+        if (now - lastUpdateTimeRef.current > 33) {
           setLatestPitch(data);
           lastUpdateTimeRef.current = now;
         }
       });
 
+      // すべての準備が整ってからフラグを更新
       setIsRunning(true);
     } catch (err: any) {
       console.error("Engine Start Error:", err);
-      setError("マイクの起動に失敗しました。許可設定を確認してください。");
+      setError("マイクまたはモデルの起動に失敗しました。");
       setIsRunning(false);
     } finally {
-      setIsPreparing(false);
+      setIsPreparing(false); // ここで「診断スタート」から「停止」にボタンが切り替わる
     }
-  }, [isRunning, isPreparing]);
+  }, [isRunning, isPreparing, isAnalyzing]);
 
   const stop = useCallback(async () => {
-    if (!isRunning || !engineRef.current) return;
+    if (!isRunning || isAnalyzing || !engineRef.current) return;
     
-    setIsRunning(false);
     setIsAnalyzing(true);
+    // 停止した瞬間に表示を初期化
+    setLatestPitch({ pitch: 0, note: "--", confidence: 0 });
 
     try {
-      // 1. エンジン停止とサーバー送信
       const res = await engineRef.current.stop();
       setDiagnosis(res);
       
-      // 2. AudioContextを確実に閉じてリソース解放
       if (audioContextRef.current) {
         await audioContextRef.current.close();
         audioContextRef.current = null;
@@ -73,11 +71,11 @@ export function usePitchEngine() {
       console.error("Engine Stop Error:", err);
       setError("解析に失敗しました。");
     } finally {
+      setIsRunning(false); 
       setIsAnalyzing(false);
     }
-  }, [isRunning]);
+  }, [isRunning, isAnalyzing]);
 
-  // コンポーネント破棄時に全てをクリーンアップ
   useEffect(() => {
     return () => {
       engineRef.current?.stop().catch(() => {});

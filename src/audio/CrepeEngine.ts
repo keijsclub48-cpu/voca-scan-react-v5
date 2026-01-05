@@ -21,29 +21,24 @@ export class CrepeEngine {
     if (!ml5) throw new Error("ml5 not loaded");
 
     try {
-      // マイク取得
       this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       this.source = this.audioContext.createMediaStreamSource(this.stream);
 
-      // モデルのロード（一度ロードされたら detector は使い回す）
-      if (!this.detector) {
-        this.detector = await ml5.pitchDetection(
+      // モデルのロード完了まで Promise で待機
+      await new Promise<void>((resolve, reject) => {
+        this.detector = ml5.pitchDetection(
           "/model/pitch-detection/crepe/",
           this.audioContext,
           this.stream,
-          () => console.log("CREPE model initialized")
+          () => {
+            console.log("CREPE model loaded and ready");
+            resolve();
+          }
         );
-      } else {
-        // ロード済みの場合はストリームだけを更新する
-        // ※ml5の型仕様により再割り当てが効かない場合は再生成されます
-        this.detector = await ml5.pitchDetection(
-          "/model/pitch-detection/crepe/",
-          this.audioContext,
-          this.stream
-        );
-      }
+        // タイムアウト設定（10秒以上かかる場合は異常とみなす）
+        setTimeout(() => reject(new Error("Model load timeout")), 10000);
+      });
 
-      // レコーダー設定
       this.audioChunks = [];
       this.mediaRecorder = new MediaRecorder(this.stream, { mimeType: "audio/webm" });
       this.mediaRecorder.ondataavailable = e => {
@@ -80,7 +75,7 @@ export class CrepeEngine {
     return new Promise((resolve, reject) => {
       if (!this.mediaRecorder || !wasRunning) {
         this.cleanup();
-        return reject(new Error("No active recording session"));
+        return reject(new Error("No active session"));
       }
 
       this.mediaRecorder.onstop = async () => {
@@ -101,19 +96,14 @@ export class CrepeEngine {
 
   private cleanup(): void {
     this.running = false;
-    
-    // ソースの切断
     if (this.source) {
       this.source.disconnect();
       this.source = null;
     }
-    
-    // マイクストリームを完全に停止（ブラウザの録音中アイコンを消す）
     if (this.stream) {
-      this.stream.getTracks().forEach(track => track.stop());
+      this.stream.getTracks().forEach(t => t.stop());
       this.stream = null;
     }
-    
     this.mediaRecorder = null;
     this.audioChunks = [];
     this.resetAnalyzer();
@@ -123,6 +113,11 @@ export class CrepeEngine {
     if (!rawFreq) return null;
     if (!this.smooth) this.smooth = rawFreq;
     this.smooth = this.smooth * 0.85 + rawFreq * 0.15;
+    //     係数の設定例	動きの印象	メリット / デメリット
+    // 0.80 / 0.20	キビキビ動く	反応は速いが、数値が細かく震えやすい
+    // 0.85 / 0.15	標準的（現在）	歌声に対して程よい追従性がある
+    // 0.90 / 0.10	ゆったり	滑らかに見えるが、音程を変えた時に少し遅れて数値がついてくる
+    // 0.95 / 0.05	かなりヌルヌル	非常に安定するが、素早いビブラートなどは捉えきれなくなる
     const s = this.smooth;
 
     let confidence = 1;
@@ -157,10 +152,10 @@ export class CrepeEngine {
       const reader = new FileReader();
       reader.onloadend = () => {
         const result = reader.result as string | null;
-        if (!result) return reject(new Error("Base64 conversion failed"));
+        if (!result) return reject(new Error("Base64 error"));
         const parts = result.split(",");
         const base64 = parts[1];
-        if (!base64) return reject(new Error("Invalid base64 format"));
+        if (!base64) return reject(new Error("Invalid format"));
         resolve(base64);
       };
       reader.onerror = () => reject(reader.error);
