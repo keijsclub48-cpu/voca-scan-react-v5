@@ -1,0 +1,45 @@
+{
+  "compilerOptions": {
+    /* === 基本設定 === */
+    "target": "ES2020",
+    "module": "ESNext",
+    "lib": ["DOM", "DOM.Iterable", "ESNext"],
+    "jsx": "react-jsx",
+
+    /* === モジュール解決 === */
+    "moduleResolution": "Bundler",
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
+
+    /* === JS との混在を許可 === */
+    "allowJs": true,
+    "checkJs": false,
+
+    /* === 型安全 === */
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "noUncheckedIndexedAccess": true,
+
+    /* === ビルド関係 === */
+    "isolatedModules": true,
+    "noEmit": true,
+
+    /* === 相互運用 === */
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+
+    /* === 開発体験向上 === */
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+
+    /* === パス設定（必要なら） === */
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    }
+  },
+
+  "include": ["src", "src/apiClient.ts", "vite-env.d.ts"],
+  "exclude": ["node_modules", "dist"]
+}
